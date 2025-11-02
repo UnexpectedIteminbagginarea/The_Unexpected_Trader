@@ -282,15 +282,21 @@ class LiveFibonacciBot:
             except:
                 sentiment['ls_ratio'] = 1.0
 
-            # Funding Rate
+            # Funding Rate - Get from Aster API (more reliable than CoinGlass)
             try:
-                url = f"{self.coinglass_base}/api/futures/funding-rate/history"
-                params = {'exchange': 'Binance', 'symbol': 'BTCUSDT', 'interval': '8h', 'limit': 1}
-                response = requests.get(url, headers=headers, params=params, timeout=5)
-                data = response.json()
-                if data.get('code') == '0' and data.get('data'):
-                    sentiment['funding_rate'] = float(data['data']['data'][0]['funding_rate'])
-            except:
+                aster_url = "https://fapi.asterdex.com/fapi/v1/premiumIndex"
+                aster_params = {'symbol': 'BTCUSDT'}
+                aster_headers = {'X-API-KEY': os.getenv('ASTER_API_KEY')}
+                aster_response = requests.get(aster_url, params=aster_params, headers=aster_headers, timeout=5)
+                if aster_response.status_code == 200:
+                    aster_data = aster_response.json()
+                    sentiment['funding_rate'] = float(aster_data.get('lastFundingRate', 0.0001))
+                    print(f"✅ Aster funding rate: {sentiment['funding_rate']}")
+                else:
+                    print(f"⚠️ Aster funding rate status: {aster_response.status_code}")
+                    sentiment['funding_rate'] = 0.0001
+            except Exception as e:
+                print(f"⚠️ Aster funding rate error: {e}")
                 sentiment['funding_rate'] = 0.0001
 
             # Update cache with fresh data
