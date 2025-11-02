@@ -1,0 +1,93 @@
+# Environment variables and API keys
+.env
+.env.local
+.env.*.local
+*.key
+secrets/
+credentials/
+
+# API Keys
+config/secrets.py
+*_api_key*
+*secret*
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Next.js / Dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/.vercel/
+dashboard/.turbo/
+node_modules/
+.next/
+out/
+.vercel/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Personal data
+personal/
+private/
+my_*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Dashboard backups
+dashboard-backup-*/

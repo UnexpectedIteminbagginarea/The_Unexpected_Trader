@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Animated spectral gradient (dark space variant) */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* CSS Stars animation fallback */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* Pulse animation for chart dots */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Starfield CSS fallback */
+.starfield {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.starfield::before,
+.starfield::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: white;
+  box-shadow:
+    100px 200px white, 300px 150px white, 500px 100px white, 700px 250px white,
+    200px 400px white, 400px 350px white, 600px 300px white, 800px 450px white,
+    150px 600px white, 350px 550px white, 550px 500px white, 750px 650px white,
+    100px 800px white, 300px 750px white, 500px 700px white, 700px 850px white,
+    250px 50px white, 450px 100px white, 650px 150px white, 850px 200px white;
+  animation: twinkle 3s infinite;
+}
+
+/* Use on large containers to create a living gradient over the stars */
+.animated-space-gradient {
+  background: linear-gradient(
+    -45deg,
+    #0f0f14 0%,          /* near-black */
+    #1a1a24 25%,         /* deep gray */
+    #2d1810 50%,         /* ember glow */
+    #161620 75%,         /* back to dark */
+    #0f0f14 100%
+  );
+  background-size: 400% 400%;
+  animation: gradient-shift 16s ease infinite;
+}
+
+/* Advanced glassmorphism utility */
+.glass-advanced {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 145, 77, 0.25); /* orange spectral */
+  box-shadow:
+    0 10px 30px -12px rgba(255, 115, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.glass-advanced::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><filter id="n"><feTurbulence baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" /></svg>');
+}
+
+@layer base {
+  body {
+    @apply bg-black text-white;
+  }
+}
