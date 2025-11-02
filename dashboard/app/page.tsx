@@ -117,22 +117,22 @@ export default function DashboardPage() {
         setCurrentPrice(priceData.price);
       }
 
-      // Fetch Claude reviews (from local log for now)
+      // Fetch Claude reviews from LIVE API
       try {
-        const claudeLog = await fetch('/claude_decisions.json');
-        if (claudeLog.ok) {
-          const claudeText = await claudeLog.text();
-          const lines = claudeText.trim().split('\n');
-          const reviews = lines.slice(-4).map(line => JSON.parse(line)).reverse();
-          setClaudeReviews(reviews.map((r: any) => ({
+        const claudeRes = await fetch('https://api.theunexpectedtrader.com/api/claude/decisions');
+        if (claudeRes.ok) {
+          const claudeData = await claudeRes.json();
+          // Get last 6 reviews and reverse for newest first
+          const recentReviews = claudeData.slice(-6).reverse();
+          setClaudeReviews(recentReviews.map((r: any) => ({
             timestamp: r.timestamp,
-            decision: r.claude_decision.decision,
-            reasoning: r.claude_decision.reasoning,
-            confidence: r.claude_decision.confidence
+            decision: r.decision,
+            reasoning: r.reasoning,
+            confidence: r.confidence
           })));
         }
       } catch (e) {
-        console.log('Claude reviews not available yet');
+        console.log('Claude reviews API error:', e);
       }
 
       setLastUpdate(new Date());
