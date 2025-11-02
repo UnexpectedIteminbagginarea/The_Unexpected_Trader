@@ -117,9 +117,9 @@ export default function DashboardPage() {
         setCurrentPrice(priceData.price);
       }
 
-      // Fetch Claude reviews from LIVE API
+      // Fetch Claude reviews from LIVE API via Next.js route
       try {
-        const claudeRes = await fetch('https://api.theunexpectedtrader.com/api/claude/decisions');
+        const claudeRes = await fetch('/api/data/claude-reviews');
         if (claudeRes.ok) {
           const claudeData = await claudeRes.json();
           // Get last 6 reviews and reverse for newest first
