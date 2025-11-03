@@ -80,34 +80,6 @@ export default function DashboardPage() {
       if (decRes.ok) {
         decData = await decRes.json();
         setDecisions(decData);
-
-        // Extract sentiment from latest decision
-        if (decData && decData.length > 0) {
-          const latestWithSentiment = decData.find((d: any) => d.sentiment_scores);
-          if (latestWithSentiment && latestWithSentiment.sentiment_scores) {
-            const sentiment = latestWithSentiment.sentiment_scores;
-            const fg = sentiment.fear_greed || 30;
-            const fr = sentiment.funding_rate || 0.0001;
-
-            // Determine bot decision based on sentiment
-            let decision = "Monitoring position";
-            if (fg < 25 && fr < -0.01) {
-              decision = "Extreme fear + neg funding → Strong buy conditions (1.3x sizing)";
-            } else if (fg < 40) {
-              decision = "Fear sentiment → Letting winners run (1.2x targets)";
-            } else if (fg > 75 && fr > 0.05) {
-              decision = "Extreme greed → Taking profits early (0.6x targets)";
-            }
-
-            setLiveAnalysis({
-              fear_greed: fg,
-              funding_rate: fr,
-              ls_ratio: sentiment.ls_ratio || 1.0,
-              bot_decision: decision,
-              upper_exit: 112246
-            });
-          }
-        }
       }
 
       // Fetch current price
@@ -117,22 +89,74 @@ export default function DashboardPage() {
         setCurrentPrice(priceData.price);
       }
 
-      // Fetch Claude reviews from LIVE API via Next.js route
-      try {
-        const claudeRes = await fetch('/api/data/claude-reviews');
-        if (claudeRes.ok) {
-          const claudeData = await claudeRes.json();
-          // Get last 6 reviews and reverse for newest first
-          const recentReviews = claudeData.slice(-6).reverse();
-          setClaudeReviews(recentReviews.map((r: any) => ({
-            timestamp: r.timestamp,
-            decision: r.decision,
-            reasoning: r.reasoning,
-            confidence: r.confidence
-          })));
+      // Get live sentiment from latest Claude review
+      const claudeRes = await fetch('/api/data/claude-reviews');
+      if (claudeRes.ok) {
+        const claudeData = await claudeRes.json();
+        if (claudeData && claudeData.length > 0) {
+          const latest = claudeData[claudeData.length - 1];
+          const market = latest.market_state || {};
+
+          const fg = market.fear_greed || 30;
+          const fr = market.funding_rate || 0.0001;
+          const ls = market.ls_ratio || 1.0;
+
+          let decision = "Monitoring position";
+          if (fg < 25 && fr < -0.01) {
+            decision = "Extreme fear + neg funding → Strong buy conditions";
+          } else if (fg < 40) {
+            decision = "Fear sentiment → Letting winners run (1.2x targets)";
+          } else if (fg > 75) {
+            decision = "Greed detected → Taking profits early";
+          }
+
+          setLiveAnalysis({
+            fear_greed: fg,
+            funding_rate: fr,
+            ls_ratio: ls,
+            bot_decision: decision,
+            upper_exit: 112246
+          });
         }
-      } catch (e) {
-        console.log('Claude reviews API error:', e);
+      }
+
+      // Fetch Claude reviews for AI Strategic Reviews section
+      const claudeReviewsRes = await fetch('/api/data/claude-reviews');
+      if (claudeReviewsRes.ok) {
+        const reviews = await claudeReviewsRes.json();
+        const recentReviews = reviews.slice(-6).reverse();
+        setClaudeReviews(recentReviews.map((r: any) => ({
+          timestamp: r.timestamp,
+          decision: r.decision,
+          reasoning: r.reasoning,
+          confidence: r.confidence
+        })));
+
+        // Update Live Analysis with latest market data from Claude
+        if (reviews.length > 0) {
+          const latest = reviews[reviews.length - 1];
+          const market = latest.market_state || {};
+          const fg = market.fear_greed || 30;
+          const fr = market.funding_rate || 0.0001;
+          const ls = market.ls_ratio || 1.0;
+
+          let decision = "Monitoring position";
+          if (fg < 25 && fr < -0.01) {
+            decision = "Extreme fear + neg funding → Strong buy conditions";
+          } else if (fg < 40) {
+            decision = "Fear sentiment → Letting winners run (1.2x targets)";
+          } else if (fg > 75) {
+            decision = "Greed detected → Taking profits early";
+          }
+
+          setLiveAnalysis({
+            fear_greed: fg,
+            funding_rate: fr,
+            ls_ratio: ls,
+            bot_decision: decision,
+            upper_exit: 112246
+          });
+        }
       }
 
       setLastUpdate(new Date());
@@ -233,10 +257,6 @@ export default function DashboardPage() {
                   <span className="text-gray-400">Leverage:</span>
                   <span className="text-white font-semibold">{position.position.leverage}x</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Scale-ins:</span>
-                  <span className="text-white font-semibold">{position.scale_in_count}/4</span>
-                </div>
                 <div className="pt-3 mt-3 border-t border-white/10">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Unrealized P&L (Leveraged):</span>
@@ -279,20 +299,23 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Target levels */}
+          {/* Next Action - Actual Bot Triggers */}
           {position && (
             <div className="grid grid-cols-3 gap-3 text-center text-sm mt-4">
-              <div className="bg-green-900/20 border border-green-500/30 rounded p-2">
-                <div className="text-green-400">Target +5%</div>
-                <div className="text-white">${(position.position.average_price * 1.05).toLocaleString()}</div>
+              <div className="bg-blue-900/20 border border-blue-500/30 rounded p-2">
+                <div className="text-blue-400 text-xs">Daily Fib 50%</div>
+                <div className="text-white font-semibold">$112,246</div>
+                <div className="text-xs text-gray-400 mt-1">[Claude decides]</div>
               </div>
               <div className="bg-green-900/20 border border-green-500/30 rounded p-2">
-                <div className="text-green-400">Target +10%</div>
-                <div className="text-white">${(position.position.average_price * 1.10).toLocaleString()}</div>
+                <div className="text-green-400 text-xs">+6% Price (+24% ROE)</div>
+                <div className="text-white font-semibold">${(position.position.average_price * 1.06).toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">[Algo suggests trim → Claude]</div>
               </div>
-              <div className="bg-red-900/20 border border-red-500/30 rounded p-2">
-                <div className="text-red-400">Invalidation -10%</div>
-                <div className="text-white">${(position.position.average_price * 0.90).toLocaleString()}</div>
+              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-2">
+                <div className="text-yellow-400 text-xs">-4% Price (-16% ROE)</div>
+                <div className="text-white font-semibold">${(position.position.average_price * 0.96).toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">[Algo suggests add → Claude]</div>
               </div>
             </div>
           )}
@@ -370,6 +393,10 @@ export default function DashboardPage() {
                   ) : (
                     <div className="text-gray-500 text-center py-4 text-xs">No AI reviews yet</div>
                   )}
+                </div>
+                {/* Beta disclaimer - below the scrollable box */}
+                <div className="bg-purple-900/10 border border-purple-500/20 rounded p-2 text-xs text-gray-500 italic mt-3">
+                  While in beta, Claude is limited to 3 position additions per day. Any further recommendations beyond this are blocked by the bot's safety protocol.
                 </div>
               </div>
 
@@ -455,7 +482,15 @@ export default function DashboardPage() {
 
         {/* About Section */}
         <div className="glass-advanced rounded-xl p-4 md:p-6">
-          <h2 className="text-xl md:text-2xl font-semibold text-orange-400 mb-4 md:mb-6">📖 About The Unexpected Trader</h2>
+          <div className="flex justify-between items-center mb-4 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-semibold text-orange-400">📖 About The Unexpected Trader</h2>
+            <a
+              href="/ai-prompts"
+              className="px-3 py-1.5 md:px-4 md:py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs md:text-sm rounded-lg transition-colors"
+            >
+              🤖 AI Prompts
+            </a>
+          </div>
 
           {/* Vision */}
           <div className="prose prose-invert max-w-none mb-4 md:mb-6">

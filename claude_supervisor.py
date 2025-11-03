@@ -34,7 +34,7 @@ class ClaudeSupervisor:
         # Decision log for transparency
         self.decision_history = []
 
-    def build_context(self, trigger_type, current_price, position, sentiment, algo_proposal=None, market_data=None):
+    def build_context(self, trigger_type, current_price, position, sentiment, algo_proposal=None, market_data=None, account_info=None):
         """
         Build structured context for Claude
         This is the complete picture Claude sees
@@ -75,6 +75,14 @@ class ClaudeSupervisor:
             },
             "adjustments_today": self._count_todays_adjustments()
         }
+
+        # Add account state if provided
+        if account_info:
+            context["account_state"] = {
+                "sol_balance": account_info.get('sol', 0),
+                "usd_value": account_info.get('usd_value', 0),
+                "available_to_trade": account_info.get('available_balance', 0)
+            }
 
         # Add algorithm's proposal if provided
         if algo_proposal:
@@ -229,7 +237,7 @@ Consider:
 
         return self.ask_for_decision("EXIT", context, question)
 
-    def periodic_review(self, current_price, position, sentiment, market_data=None):
+    def periodic_review(self, current_price, position, sentiment, market_data=None, account_info=None):
         """
         20-minute position review
         Can suggest adds (if at Fib) or hold
@@ -239,7 +247,8 @@ Consider:
             current_price=current_price,
             position=position,
             sentiment=sentiment,
-            market_data=market_data  # CRITICAL FIX: Pass market data to context
+            market_data=market_data,  # CRITICAL FIX: Pass market data to context
+            account_info=account_info  # NEW: Pass account info for capital allocation awareness
         )
 
         question = f"""

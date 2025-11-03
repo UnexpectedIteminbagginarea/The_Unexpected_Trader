@@ -91,6 +91,19 @@ class PositionRecovery:
 
     def log_recovery(self, logger, position_data):
         """Log the recovery event to trading logs"""
+
+        # FIX: Synchronize logger's current_position with recovered position
+        # This ensures future log_scale_decision() and log_exit_decision() calls work
+        # Without this, logger.current_position stays None and causes crashes
+        logger.current_position = {
+            'status': 'OPEN',
+            'entry_price': position_data['entry_price'],
+            'average_price': position_data['average_price'],
+            'size': position_data['size'],
+            'leverage': position_data['leverage'],
+            'entry_time': position_data.get('entry_time', datetime.now().isoformat())
+        }
+
         logger.decisions.append({
             'timestamp': datetime.now().isoformat(),
             'action': 'RECOVERY',

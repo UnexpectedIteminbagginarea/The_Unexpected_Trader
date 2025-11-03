@@ -70,8 +70,11 @@ class AsterTradingClient:
             return None
 
     def get_account_info(self) -> Dict:
-        """Get account balance and info"""
+        """Get account balance and info including available margin"""
         balances = self._make_request('GET', '/fapi/v2/balance')
+
+        # Also get full account for available balance
+        account = self._make_request('GET', '/fapi/v1/account')
 
         if balances:
             sol_balance = 0
@@ -85,7 +88,17 @@ class AsterTradingClient:
                     usd_value = sol_balance * sol_price
                     print(f"   ≈ ${usd_value:,.2f} USD")
 
-            return {'sol': sol_balance, 'usd_value': usd_value}
+            # Add available balance from account endpoint
+            available_balance = 0
+            if account:
+                available_balance = float(account.get('availableBalance', 0))
+                print(f"   💵 Available to trade: ${available_balance:,.2f}")
+
+            return {
+                'sol': sol_balance,
+                'usd_value': usd_value,
+                'available_balance': available_balance
+            }
         return None
 
     def get_current_position(self) -> Optional[Dict]:
@@ -215,8 +228,14 @@ class AsterTradingClient:
 
     def scale_in_position(self, add_percentage: float, new_leverage: int, current_price: float) -> bool:
         """Add to existing position"""
+        # Get current position from exchange first
+        current_pos = self.get_current_position()
+        if not current_pos:
+            print("❌ No position found on exchange")
+            return False
+
         # Update leverage if needed
-        if new_leverage != self.position.get('leverage'):
+        if new_leverage != current_pos.get('leverage'):
             self.set_leverage(new_leverage)
 
         # Calculate additional size
@@ -226,12 +245,15 @@ class AsterTradingClient:
             order = self.place_market_order('BUY', btc_amount)
 
             if order:
-                # Update position tracking
-                old_amount = self.position['amount']
-                old_price = self.position['entry_price']
+                # Update position tracking using current_pos (not self.position which may be None)
+                old_amount = current_pos['amount']
+                old_price = current_pos['entry_price']
                 new_amount = old_amount + btc_amount
                 new_price = (old_amount * old_price + btc_amount * current_price) / new_amount
 
+                # Update internal tracking
+                if not self.position:
+                    self.position = {}
                 self.position['amount'] = new_amount
                 self.position['entry_price'] = new_price
                 self.position['leverage'] = new_leverage

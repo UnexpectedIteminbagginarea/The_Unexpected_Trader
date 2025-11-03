@@ -100,8 +100,8 @@ class LiveFibonacciBot:
         self.remaining_after_fib = 0
 
         # 20-minute review timer
-        # Trigger first review immediately on startup
-        self.last_review_time = datetime.now() - timedelta(seconds=1200)
+        # Start timer from NOW (no immediate review on restart)
+        self.last_review_time = datetime.now()
         self.REVIEW_INTERVAL = 1200  # 20 minutes in seconds
 
         # Check account balance
@@ -119,6 +119,7 @@ class LiveFibonacciBot:
             # Restore position state
             self.position = recovered_position
             self.last_entry_price = recovered_last_entry
+            print(f"🔍 DEBUG: last_entry_price set to: {self.last_entry_price}")
             self.total_position_size = recovered_position['size']
             self.current_leverage = recovered_position['leverage']
             self.scale_in_count = recovered_position.get('scale_in_count', 0)
@@ -268,7 +269,12 @@ class LiveFibonacciBot:
                 data = response.json()
                 if data.get('code') == '0' and data.get('data'):
                     sentiment['fear_greed'] = data['data']['data_list'][0]
-            except:
+                    print(f"✅ CoinGlass Fear & Greed: {sentiment['fear_greed']}")
+                else:
+                    print(f"⚠️ CoinGlass F&G code: {data.get('code')}, status: {response.status_code}")
+                    sentiment['fear_greed'] = 50
+            except Exception as e:
+                print(f"⚠️ CoinGlass F&G error: {e}")
                 sentiment['fear_greed'] = 50
 
             # Long/Short Ratio
@@ -278,8 +284,14 @@ class LiveFibonacciBot:
                 response = requests.get(url, headers=headers, params=params, timeout=5)
                 data = response.json()
                 if data.get('code') == '0' and data.get('data'):
-                    sentiment['ls_ratio'] = float(data['data']['data'][0]['long_ratio'])
-            except:
+                    # Correct field: global_account_long_short_ratio (not long_ratio!)
+                    sentiment['ls_ratio'] = float(data['data'][0]['global_account_long_short_ratio'])
+                    print(f"✅ CoinGlass L/S Ratio: {sentiment['ls_ratio']}")
+                else:
+                    print(f"⚠️ CoinGlass L/S code: {data.get('code')}, status: {response.status_code}")
+                    sentiment['ls_ratio'] = 1.0
+            except Exception as e:
+                print(f"⚠️ CoinGlass L/S error: {e}")
                 sentiment['ls_ratio'] = 1.0
 
             # Funding Rate - Get from Aster API (more reliable than CoinGlass)
@@ -790,6 +802,10 @@ class LiveFibonacciBot:
                     self.current_leverage = new_leverage
                     self.scale_in_count = i + 1
 
+                    # Save position state for dashboard
+                    recovery = PositionRecovery()
+                    recovery.save_position_state(self.position)
+
                     print(f"✅ REAL SCALE-IN COMPLETE!")
                     print(f"   New average: ${new_avg:,.2f}, Total size: {new_size*100:.0f}%")
 
@@ -881,9 +897,15 @@ class LiveFibonacciBot:
 
                 # Update position state
                 self.total_position_size *= (1 - final_exit_pct)
+                self.position['size'] = self.total_position_size
                 self.fib_partial_exit_taken = True
                 self.fib_exit_price = current_price
                 self.remaining_after_fib = self.total_position_size
+
+                # Save position state for dashboard
+                if self.total_position_size > 0:
+                    recovery = PositionRecovery()
+                    recovery.save_position_state(self.position)
 
                 remaining_pct = (1 - final_exit_pct) * 100
                 print(f"✅ EXIT COMPLETE: Took {final_exit_pct*100:.0f}%, holding {remaining_pct:.1f}%")
@@ -919,6 +941,10 @@ class LiveFibonacciBot:
                     self.total_position_size = 0
                     self.fib_partial_exit_taken = False
                     self.fib_exit_price = None
+
+                    # Save cleared position state for dashboard
+                    recovery = PositionRecovery()
+                    recovery.save_position_state(None)
 
                     print(f"✅ FULL EXIT on Fib rejection - All gains banked!")
 
@@ -1052,11 +1078,15 @@ class LiveFibonacciBot:
                         market_data = self.get_market_data()
                         print(f"   Market data fetched: Vol={market_data.get('volume_24h_btc', 'NONE')}, OB={market_data.get('orderbook_imbalance', 'NONE')}")
 
+                        # Get account info for Claude (capital allocation awareness)
+                        account_info = self.trading_client.get_account_info()
+
                         review_decision = self.claude.periodic_review(
                             current_price=current_price,
                             position=self.position,
                             sentiment=sentiment,
-                            market_data=market_data
+                            market_data=market_data,
+                            account_info=account_info  # NEW: Claude knows about available balance
                         )
 
                         if review_decision['decision'] == 'ADD':
@@ -1071,10 +1101,64 @@ class LiveFibonacciBot:
 
                             if safety_result[0]:
                                 final_add = safety_result[2]['size_or_amount'] if safety_result[2] else add_amount
-                                # Execute the add (similar to scale-in)
-                                print(f"   ✅ Executing Claude's ADD: {final_add*100:.1f}%")
-                                self.safety.log_adjustment('ADD', final_add)
-                                # Would execute actual trade here
+                                print(f"   ✅ Safety approved Claude's ADD: {final_add*100:.1f}%")
+
+                                # EXECUTE THE TRADE
+                                if self.shadow_mode:
+                                    print(f"   🔮 SHADOW MODE: Would add {final_add*100:.1f}% to position")
+                                    success = True
+                                else:
+                                    # Use same leverage as current position (default to 4x if not set)
+                                    leverage = self.current_leverage if self.current_leverage else 4
+                                    success = self.trading_client.scale_in_position(
+                                        add_percentage=final_add,
+                                        new_leverage=leverage,
+                                        current_price=current_price
+                                    )
+
+                                if success:
+                                    print(f"   ✅ CLAUDE ADD EXECUTED: +{final_add*100:.1f}%")
+
+                                    # Log the trade to trading_decisions.json (for dashboard)
+                                    reason = f"Claude 20-min review: {review_decision.get('reasoning', '')[:100]}"
+                                    decision = self.logger.log_scale_decision(
+                                        price=current_price,
+                                        add_size=final_add * 100,
+                                        new_leverage=leverage,
+                                        deviation=0,  # Claude-initiated, not deviation-based
+                                        reason=reason
+                                    )
+
+                                    # Log adjustment for daily limit tracking
+                                    self.safety.log_adjustment('ADD', final_add)
+
+                                    # Update bot's position tracking
+                                    old_avg = self.position['average_price']
+                                    old_size = self.total_position_size
+                                    new_size = old_size + final_add
+                                    new_avg = (old_size * old_avg + final_add * current_price) / new_size
+
+                                    self.position['average_price'] = new_avg
+                                    self.position['size'] = new_size
+                                    self.total_position_size = new_size
+                                    self.last_entry_price = current_price
+                                    self.scale_in_count += 1
+
+                                    # Save position state for recovery (with updated average)
+                                    recovery = PositionRecovery()
+                                    state_to_save = {
+                                        'entry_price': self.position.get('entry_price'),
+                                        'average_price': new_avg,  # Use calculated average
+                                        'size': new_size,
+                                        'leverage': leverage,
+                                        'entry_time': self.position.get('entry_time'),
+                                        'scale_in_count': self.scale_in_count
+                                    }
+                                    recovery.save_position_state(state_to_save)
+
+                                    print(f"   📊 New average: ${new_avg:,.2f}, Total size: {new_size*100:.0f}%, Scale-ins: {self.scale_in_count}")
+                                else:
+                                    print(f"   ❌ TRADE EXECUTION FAILED - NOT logging adjustment")
                             else:
                                 print(f"   🚫 SAFETY BLOCKED: {safety_result[1]}")
 
@@ -1135,6 +1219,29 @@ class LiveFibonacciBot:
 
                 if success:
                     cycle_count += 1
+
+                # Sync position from Aster (keep tracking accurate)
+                if self.position is not None:
+                    try:
+                        aster_pos = self.trading_client.get_current_position()
+                        if aster_pos:
+                            # Update from Aster (source of truth)
+                            self.position['size'] = aster_pos['amount']
+                            self.position['average_price'] = aster_pos['entry_price']
+                            self.position['leverage'] = aster_pos['leverage']
+                            self.total_position_size = aster_pos['amount']
+
+                            # Preserve bot-specific fields (Aster doesn't track these)
+                            # - entry_time: Keep original
+                            # - scale_in_count: Bot maintains this
+
+                            # Save to file for dashboard
+                            recovery = PositionRecovery()
+                            recovery.save_position_state(self.position)
+
+                            print(f"🔄 Position synced from Aster: {aster_pos['amount']} BTC @ ${aster_pos['entry_price']:,.2f}")
+                    except Exception as e:
+                        print(f"⚠️ Position sync failed (non-critical): {e}")
 
                 # Sleep between cycles (faster when eager or in position)
                 if self.eager_to_enter or self.position is not None:
