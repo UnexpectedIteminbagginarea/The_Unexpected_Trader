@@ -334,6 +334,7 @@ Red P&L ≠ Exit signal
 - ❌ Reduce more than **20% in one review**
 - ❌ Adjust more frequently than **every 30 minutes**
 - ❌ **Reduce position while in a LOSS** (NEW RULE per your request!)
+- ❌ **ADD when account is fully allocated** (available_to_trade = $0)
 
 **The "No Reduce in Loss" Rule**:
 ```
@@ -347,6 +348,31 @@ WHY: We don't want to lock in losses
 ```
 
 **Exception**: Emergency exit (full close, not partial reduce)
+
+**The "No ADD When Fully Allocated" Rule**:
+```
+IF account_state.available_to_trade == 0:
+   Claude CANNOT add to position
+   Decision must be: HOLD
+
+WHY: Account has no available margin
+     All collateral is deployed in current position
+     Exchange will reject any ADD orders
+     Must wait for price movement to free up capital
+
+WHAT TO DO: Say HOLD with reasoning:
+   "Account fully allocated ($0 available balance).
+    Cannot add more until capital is freed up."
+```
+
+**Check the context**: You will receive `account_state` in your context:
+```json
+{
+  "account_state": {
+    "available_to_trade": 0.0  // If 0, you MUST say HOLD
+  }
+}
+```
 
 ---
 
